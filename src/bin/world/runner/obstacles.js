@@ -1,51 +1,53 @@
 import * as THREE from 'three';
-import Obstacle from "./obstackles/obstacle";
-import _ from 'lodash';
+import Obstacle from './obstackles/obstacle';
 
-export default class Obstacles {
-    constructor(props) {
-        this.loader = props.loader;
-        this.time = props.time;
-        this.shadows = props.shadows;
-        this.manager = props.manager;
+export default class ObstaclesManager {
+    constructor({ loader, time, shadows, manager }) {
+        this.loader = loader;
+        this.time = time;
+        this.shadows = shadows;
+        this.manager = manager;
 
         this.container = new THREE.Object3D();
-        this.container.name = "obstacles";
-        this.delayRange = 10;
+        this.container.name = 'obstacles_group';
+
+        this.spawnDelay = this._randomDelay();
+        this.frameCounter = 0;
 
         this.colliders = [];
 
-        this.init();
+        this._initialize();
     }
 
-    init() {
-        this.load();
+    _initialize() {
+        this._setupSpawnLoop();
     }
 
-    updateRange() {
-        return _.random(40, 100);
+    _randomDelay() {
+        // Génère un délai aléatoire entre 30 et 90 ticks
+        return Math.floor(Math.random() * 61) + 30;
     }
 
-    load() {
-        let delta = 0;
+    _setupSpawnLoop() {
+        this.time.on('tick', () => {
+            this.frameCounter++;
 
-        this.time.on('tick', time => {
-            delta++;
+            if (this.frameCounter >= this.spawnDelay) {
+                this.frameCounter = 0;
+                this.spawnDelay = this._randomDelay();
 
-            if (delta > this.delayRange) {
-                delta = 0;
+                const obstacle = new Obstacle({
+                    loader: this.loader,
+                    shadows: this.shadows,
+                    time: this.time,
+                    manager: this.manager,
+                });
 
-                this.delayRange = this.updateRange();
+                this.colliders.push(obstacle.collider);
 
-                const object = new Obstacle({loader: this.loader, shadows: this.shadows, time: this.time, manager: this.manager});
+                this.container.add(obstacle.container);
 
-                this.colliders.push(
-                    object.collider
-                );
-
-                // this.shadows.add(object.container, {sizeX: 1, sizeY: 1, offsetZ: 0});
-                this.container.add(object.container)
             }
-        })
+        });
     }
 }

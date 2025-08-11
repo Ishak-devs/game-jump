@@ -1,154 +1,114 @@
 import * as THREE from 'three';
-import {Howl} from 'howler';
+import { Howl } from 'howler';
 
 export default class Player {
-    constructor(props) {
-        this.loader = props.loader;
-        this.time = props.time;
-        this.shadows = props.shadows;
-        this.manager = props.manager;
+    constructor({ loader, time, shadows, manager }) {
+        this.loader = loader;
+        this.time = time;
+        this.shadows = shadows;
+        this.manager = manager;
 
         this.container = new THREE.Object3D();
-        this.container.name = 'player';
+        this.container.name = 'player_character';
 
         this.position = new THREE.Vector3(0, 0, 0);
         this.velocity = new THREE.Vector3(0, 0, 0);
-        this.gravity = new THREE.Vector3(0, -20, 0);
+        this.gravity = new THREE.Vector3(0, -25, 0);
 
         this.clock = new THREE.Clock();
         this.mixer = null;
-        this.canRun = true;
+        this.isRunning = true;
 
-        // For collision
         this.collider = new THREE.Box3();
 
-        this.sfxJump = new Howl({
+        this.jumpSound = new Howl({
             src: ['sfx/jump_02.wav'],
             html5: true
         });
 
-        this.init();
+        this._setupControls();
+        this._loadModel();
 
         this.manager.on('fail', () => {
-            //alert('Oops! You hit that!');
-            this.canRun = false;
-        });
-    }
-
-    init() {
-        this.jumped = false;
-        this.inAir = false;
-
-        this.load();
-        this.setControls();
-
-        this.time.on('tick', data => {
-            this.update(data);
-        })
-    }
-
-    setControls() {
-        document.addEventListener('keyup', e => {
-            switch (e.code) {
-                case 'Space': {
-                    this.jumped = false;
-                    break;
-                }
-            }
+            this.isRunning = false;
         });
 
-        document.addEventListener('keydown', e => {
-            switch (e.code) {
-                case 'Space': {
-                    this.jumped = true;
-                    break;
-                }
+        this.time.on('tick', () => this._update());
+    }
+
+    _setupControls() {
+        window.addEventListener('keydown', e => {
+            if (e.code === 'Space' && this.position.y <= 0) {
+                this._jump();
             }
         });
     }
 
-    load() {
-        const mat = new THREE.MeshStandardMaterial({color: 'green'});
+    _loadModel() {
+        const playerMaterial = new THREE.MeshStandardMaterial({ color: '#ff4500' });
 
         this.loader.load('runner/player/scene.glb', gltf => {
-            const mesh = gltf.scene;
-            mesh.position.x = 0;
-            mesh.position.y = 0;
-            mesh.position.z = 0;
+            const model = gltf.scene;
+            model.position.set(0, 0, 0);
 
-            this.shadows.add(mesh, {sizeX: 0.6, sizeY: 0.6, offsetZ: 0})
+            this.shadows.add(model, { sizeX: 0.7, sizeY: 0.7, offsetZ: 0 });
 
-            this.mesh = mesh;
+            this.mesh = model;
 
-            const body = mesh.children.find(item => item.name === 'mesh');
-            const legLeft = mesh.children.find(item => item.name === 'leg_left');
-            const legRight = mesh.children.find(item => item.name === 'leg_right');
-            body.material = mat;
-            legLeft.material = mat;
-            legRight.material = mat;
+            // On applique le matériau coloré à certains enfants
+            ['mesh', 'leg_left', 'leg_right'].forEach(name => {
+                const part = model.children.find(child => child.name === name);
+                if (part) part.material = playerMaterial;
+            });
 
-            this.container.add(mesh);
+            this.container.add(model);
 
-            this.mixer = new THREE.AnimationMixer(mesh);
-            this.actionLeftLeg = this.mixer.clipAction(gltf.animations[1]);
-            this.actionLeftLeg.clampWhenFinished = false;
-            this.actionLeftLeg.setLoop(THREE.LoopPingPong);
-            this.actionLeftLeg.play();
+            this.mixer = new THREE.AnimationMixer(model);
 
-            this.actionRightLeg = this.mixer.clipAction(gltf.animations[2]);
-            this.actionRightLeg.clampWhenFinished = false;
-            this.actionRightLeg.setLoop(THREE.LoopPingPong);
-            this.actionRightLeg.play();
+            // Animation des jambes et du corps
+            ['LeftLeg', 'RightLeg', 'Body'].forEach((partName, i) => {
+                const action = this.mixer.clipAction(gltf.animations[i + 1]);
+                action.setLoop(THREE.LoopPingPong);
+                action.clampWhenFinished = false;
+                action.play();
 
-            this.actionBody = this.mixer.clipAction(gltf.animations[0]);
-            this.actionBody.clampWhenFinished = false;
-            this.actionBody.setLoop(THREE.LoopPingPong);
-            this.actionBody.play();
-        });
-
-        const clock = new THREE.Clock();
-
-        this.time.on('tick', time => {
-            const delta = clock.getDelta();
-
-            if (this.mixer && !this.inAir && !!this.canRun) {
-                this.mixer.update(delta);
-            }
+                this[`action${partName}`] = action;
+            });
         });
     }
 
-    update() {
-        if (!this.canRun) return;
+    _jump() {
+        if (!this.isRunning) return;
+        this.velocity.y = 10;
+        this.jumpSound.play();
+    }
+
+    _update() {
+        if (!this.isRunning) return;
 
         const delta = this.clock.getDelta();
 
-        if (this.jumped && this.position.y === 0) {
-            this.velocity.y = 8;
-            this.sfxJump.play();
-        } else if (this.position.y > 0) {
-            this.inAir = true;
-        } else if (this.position.y === 0) {
-            this.inAir = false;
-        }
+        // Mise à jour physique
+        this.velocity.addScaledVector(this.gravity, delta);
+        this.position.addScaledVector(this.velocity, delta);
+        this.position.y = Math.max(this.position.y, 0);
 
-        this.position.y = this.position.y + this.velocity.y * delta;
-        this.velocity.y = this.velocity.y + this.gravity.y * delta;
-
-        this.position.y = Math.max(this.position.y, 0.0)
-
+        // Mise à jour position mesh
         if (this.mesh) {
             this.mesh.position.copy(this.position);
-            this.checkCollisions(this.mesh);
+            this._updateCollider();
+            this._animate(delta);
         }
     }
 
-    checkCollisions(mesh) {
-        //this.collider.setFromObject(mesh);
-        this.collider.min.x = 0;
-        this.collider.max.x = 0.15;
-        this.collider.min.y = mesh.position.y;
-        this.collider.max.y = mesh.position.y + 0.15;
-        this.collider.min.z = 0;
-        this.collider.max.z = 0;
+    _updateCollider() {
+        this.collider.min.set(0, this.position.y, 0);
+        this.collider.max.set(0.15, this.position.y + 0.15, 0);
+    }
+
+    _animate(delta) {
+        if (this.mixer) {
+            this.mixer.update(delta);
+        }
     }
 }

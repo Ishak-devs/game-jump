@@ -10,7 +10,6 @@ export default class Obstacle {
         this.container = new THREE.Object3D();
         this.container.name = "obstacle";
 
-        // For collision
         this.collider = new THREE.Box3();
         this.canFlow = true;
 
@@ -18,38 +17,61 @@ export default class Obstacle {
 
         this.container.position.x = 8;
 
-        this.time.on('tick', time => {
+        this.time.on('tick', () => {
             if (this.container.position.x < -3) {
-                this.container.remove(this.container.children[0]);
+                if (this.container.children.length > 0) {
+                    this.container.remove(this.container.children[0]);
+                }
             } else {
                 if (this.canFlow) {
                     this.container.position.x -= 0.07;
                 }
-
                 this.collider.setFromObject(this.container);
             }
         });
 
         this.manager.on('fail', () => {
             this.canFlow = false;
-        })
+        });
     }
 
     init() {
         this.load();
     }
 
+    _createTextTexture(text) {
+        const size = 256;
+        const canvas = document.createElement('canvas');
+        canvas.width = size;
+        canvas.height = size;
+        const ctx = canvas.getContext('2d');
+
+        // Fond bleu
+        ctx.fillStyle = '#0000ff';
+        ctx.fillRect(0, 0, size, size);
+
+        // Texte blanc centré
+        ctx.font = 'bold 40px Arial';
+        ctx.fillStyle = 'white';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(text, size / 2, size / 2);
+
+        return new THREE.CanvasTexture(canvas);
+    }
+
     load() {
-        const mat = new THREE.MeshStandardMaterial({color: 'green'})
-
-        this.loader.load('runner/obstacle_01/scene.glb', gltf => {
-            const mesh = gltf.scene;
-            mesh.position.x = 0;
-            mesh.position.y = 0;
-            mesh.position.z = 0;
-            mesh.children[0].material = mat;
-
-            this.container.add(mesh);
+        const geometry = new THREE.SphereGeometry(0.5, 32, 32);
+        const texture = this._createTextTexture('insta paris');
+        const material = new THREE.MeshStandardMaterial({
+            map: texture,
+            metalness: 0.3,
+            roughness: 0.7,
         });
+
+        const sphere = new THREE.Mesh(geometry, material);
+        sphere.position.set(0, 0, 0);
+
+        this.container.add(sphere);
     }
 }
